@@ -1,10 +1,11 @@
 /**
- * Jalali (Persian) calendar conversion.
- * TypeScript port of the reference `jalaali-js` algorithm by Behrang Norouzi
- * (MIT License), using the official 33-year arithmetic break-point table.
+ * Jalali (Persian) calendar conversion — faithful TypeScript port of the
+ * reference `jalaali-js` v1.2.7 algorithm by Behrang Norouzi (MIT License).
+ * The break-point table and every arithmetic step mirror the upstream source
+ * verbatim; validated against known Nowruz dates and full round-trips.
  */
 
-const BREAKS: number[] = [
+const JALALI_BREAKS: number[] = [
   -61, 9, 38, 199, 426, 686, 756, 818, 1111, 1181, 1210, 1635, 2060, 2097,
   2192, 2262, 2324, 2394, 2456, 2518, 2600, 2637, 2716, 2749, 2786, 2829,
   2906, 2933, 2979, 3006, 3033, 3070, 3097, 3134, 3153, 3238, 3265, 3283,
@@ -29,79 +30,89 @@ function mod(a: number, b: number): number {
   return a - ~~(a / b) * b;
 }
 
-interface JalCalOut { jy: number; leap: number; gy: number; march: number }
+interface JalCalOut { leap: number; gy: number; march: number }
 
-/** jalaali-js jalCal(jy) — line-by-line port. */
+/** jalaali-js jalCal(jy) — verbatim port. */
 function jalCal(jy: number): JalCalOut {
-  let bl = BREAKS[0] as number; // -61
-  let leapJ = -14;
-  let gp = -1;
-  let march = 20;
-  for (let j = 1; j < BREAKS.length; j++) {
-    const bj = BREAKS[j];
-    if (bj === undefined) break;
-    if (jy < bl) break;
-    const current = bj - bl;
-    const nLeaps = div(current, 33) * 4 + div(mod(current, 33), 4);
-    gp += nLeaps;
-    if (mod(jy - bl, current) > current - 1) { bl = bj; continue; }
-    leapJ = gp + div(mod(jy - bl, current), 4);
-    march = bj === 1029 ? 21 : 20;
-    break;
-  }
-
+  const breaks = JALALI_BREAKS;
+  const bl = breaks.length;
   const gy = jy + 621;
-  const leapG = div(gy, 4) - div((div(gy, 33) + 2) * div(gy, 132), 4) - 1;
-  march = 20 + leapJ - leapG;
+  let leapJ = -14;
+  let jp = breaks[0] as number;
+  let jump = 0;
 
-  // Find how many years have passed since the last leap year
-  if (jy - bl < 6) {
-    let n = jy - bl + 1;
-    if (n < 1) n -= 66;
-    leapJ = leapJ - div(n, 4) + 1;
-    if (mod(n, 4) === 1) leapJ -= 2;
-    leapJ += div(n, 33) * 4;
-    leapJ += div(mod(n, 33) + 3, 4);
+  if (jy < jp || jy >= (breaks[bl - 1] as number)) {
+    throw new RangeError('Invalid Jalali year ' + jy);
   }
 
-  void gp;
-  return { jy, leap: leapJ, gy, march };
+  // Find the limiting years for the Jalaali year jy.
+  for (let i = 1; i < bl; i += 1) {
+    const jm = breaks[i] as number;
+    jump = jm - jp;
+    if (jy < jm) break;
+    leapJ = leapJ + div(jump, 33) * 8 + div(mod(jump, 33), 4);
+    jp = jm;
+  }
+  let n = jy - jp;
+
+  // Find the number of leap years from AD 621 to the beginning
+  // of the current Jalaali year in the Persian calendar.
+  leapJ = leapJ + div(n, 33) * 8 + div(mod(n, 33) + 3, 4);
+  if (mod(jump, 33) === 4 && jump - n === 4) leapJ += 1;
+
+  // And the same in the Gregorian calendar (until the year gy).
+  const leapG = div(gy, 4) - div((div(gy, 100) + 1) * 3, 4) - 150;
+
+  // Determine the Gregorian date of Farvardin the 1st.
+  const march = 20 + leapJ - leapG;
+
+  // Find how many years have passed since the last leap year.
+  if (jump - n < 6) n = n - jump + div(jump + 4, 33) * 33;
+  let leap = mod(mod(n + 1, 33) - 1, 4);
+  if (leap === -1) leap = 4;
+
+  return { leap, gy, march };
 }
 
-/** jalaali-js j2d(jy,jm,jd) */
+/** jalaali-js j2d(jy,jm,jd) — Jalali date to Julian day number. */
 function j2d(jy: number, jm: number, jd: number): number {
   const r = jalCal(jy);
   return g2d(r.gy, 3, r.march) + (jm - 1) * 31 - div(jm, 7) * (jm - 7) + jd - 1;
 }
 
-/** jalaali-js d2j(dn) */
-function d2j(dn: number): { jy: number; jm: number; jd: number } {
-  const gy0 = dn < g2d(586, 3, 21) ? 585 : 621;
-  const gy = gy0 + div(dn - g2d(gy0, 3, 21), 365);
+/** jalaali-js d2j(jdn) — Julian day number to Jalali date. */
+function d2j(jdn: number): { jy: number; jm: number; jd: number } {
+  const gy = d2g(jdn).gy; // Calculate Gregorian year (gy).
   let jy = gy - 621;
-  let r = jalCal(jy);
-  let jdn1f = g2d(gy, 3, r.march);
-  let k = dn - jdn1f;
-  if (k < 0) {
-    jy -= 1;
-    r = jalCal(jy);
-    jdn1f = g2d(r.gy, 3, r.march);
-    k = dn - jdn1f;
-  }
+  const r = jalCal(jy);
+  const jdn1f = g2d(gy, 3, r.march);
+  let k = jdn - jdn1f;
+
+  // Find number of days that passed since 1 Farvardin.
   let jm: number;
   let jd: number;
-  if (k <= 185) {
-    jm = 1 + div(k, 31);
-    jd = mod(k, 31) + 1;
-    return { jy, jm, jd };
+  if (k >= 0) {
+    if (k <= 185) {
+      // The first 6 months.
+      jm = 1 + div(k, 31);
+      jd = mod(k, 31) + 1;
+      return { jy, jm, jd };
+    } else {
+      // The remaining months.
+      k -= 186;
+    }
+  } else {
+    // Previous Jalaali year.
+    jy -= 1;
+    k += 179;
+    if (r.leap === 1) k += 1;
   }
-  k -= 186;
   jm = 7 + div(k, 30);
   jd = mod(k, 30) + 1;
   return { jy, jm, jd };
 }
 
-/** jalaali-js g2d — Gregorian to absolute day number. */
+/** jalaali-js g2d — Gregorian to Julian day number. */
 function g2d(gy: number, gm: number, gd: number): number {
   let d = div((gy + div(gm - 8, 6) + 100100) * 1461, 4)
     + div(153 * mod(gm + 9, 12) + 2, 5)
@@ -110,7 +121,7 @@ function g2d(gy: number, gm: number, gd: number): number {
   return d;
 }
 
-/** jalaali-js d2g — absolute day number to Gregorian. */
+/** jalaali-js d2g — Julian day number to Gregorian. */
 function d2g(jdn: number): { gy: number; gm: number; gd: number } {
   let j = 4 * jdn + 139361631;
   j = j + div(div(4 * jdn + 183187720, 146097) * 3, 4) * 4 - 3908;
@@ -132,6 +143,20 @@ export function jalaliToGregorian(jy: number, jm: number, jd: number): { gy: num
 /** True when Jalali year jy is a leap year (jalaali-js isLeapJalaaliYear). */
 export function isLeapJalaliYear(jy: number): boolean {
   return jalCal(jy).leap === 0;
+}
+
+/** Number of days in a Jalali month (jalaali-js jalaaliMonthLength). */
+export function jalaliMonthLength(jy: number, jm: number): number {
+  if (jm <= 6) return 31;
+  if (jm <= 11) return 30;
+  return isLeapJalaliYear(jy) ? 30 : 29;
+}
+
+/** Validate a Jalali date (jalaali-js isValidJalaaliDate). */
+export function isValidJalaliDate(jy: number, jm: number, jd: number): boolean {
+  return jy >= -61 && jy <= 3177
+    && jm >= 1 && jm <= 12
+    && jd >= 1 && jd <= jalaliMonthLength(jy, jm);
 }
 
 const JM_NAMES = ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور',
