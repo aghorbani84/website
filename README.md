@@ -1,66 +1,68 @@
-# Store 369
+# 369 Store (`website`)
 
-A private, Bun-managed JavaScript/TypeScript monorepo for the Store 369 web and API applications, with shared packages and database tooling.
+> 🚧 **Early work in progress** — the shared TypeScript package for a planned Persian e-commerce site. The API and web apps are not in this repository yet.
 
-## Workspace layout
+![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)
+![Bun workspaces](https://img.shields.io/badge/Bun-workspaces-000000?logo=bun&logoColor=white)
+![Status](https://img.shields.io/badge/status-early%20WIP-orange)
 
-The root workspace is configured for:
+## Overview
 
-- `apps/*` — application workspaces, including the web and API apps
-- `packages/*` — shared workspace packages
+This repository is the start of a monorepo (`store-369`) for an Iran-focused online store. Right now it contains the workspace configuration, environment templates, and a shared library with money, validation and Persian-calendar helpers.
 
-## Requirements
+The root `package.json` already references `apps/api` and `apps/web` (dev, build, migrate and seed scripts), but **those apps have not been committed**, so the scripts will not run yet. `packages/shared/src/index.ts` also re-exports `./slugs` and `./order-status`, which are not in the repository yet.
 
-- [Bun](https://bun.sh/) installed
-- Node.js-compatible development environment
-- Environment values configured for the app you intend to run
+## What's here
 
-## Install dependencies
+**`packages/shared`** (`@store369/shared`):
+
+- **Money** (`money.ts`) — amounts stored as integer **Rial**, explicit Rial ⇄ Toman conversion, thousands grouping, Persian-digit formatting, and Zod schemas
+- **Validators** (`validators.ts`) — Iranian mobile numbers (`09…`, `+98…`), 10-digit postal codes, landline numbers, with normalizers and Zod schemas
+- **Jalali calendar** (`jalali.ts`) — a TypeScript port of the `jalaali-js` algorithm (MIT, by Behrang Norouzi) for Gregorian ⇄ Jalali conversion
+
+**Configuration templates** — `.env.example` and `.env.production.example` describe the intended setup: PostgreSQL, session cookies, admin bootstrap, uploads, a payment gateway that stays **disabled** until real merchant credentials exist, and Toman/Rial display currency.
+
+## Tech Stack (planned, per config)
+
+- TypeScript 5 · Bun workspaces
+- Zod (validation)
+- Drizzle Kit + PostgreSQL (referenced in scripts and env)
+- Vitest (test runner)
+
+## Getting Started
+
+Only the shared package can be type-checked today:
 
 ```bash
+git clone https://github.com/aghorbani84/website.git
+cd website
 bun install
+bun run --cwd packages/shared typecheck
 ```
 
-## Development
+> The type check is expected to report the two missing modules above until they are added.
 
-Run the API and web applications in separate terminals:
+## Project Structure
 
-```bash
-bun run dev:api
-bun run dev:web
+```text
+website/
+├── package.json             # Bun workspaces: apps/*, packages/*
+├── tsconfig.base.json
+├── .env.example
+├── .env.production.example
+└── packages/
+    └── shared/
+        └── src/
+            ├── index.ts
+            ├── money.ts
+            ├── validators.ts
+            └── jalali.ts
 ```
 
-## Quality checks and production build
+## License
 
-```bash
-bun run typecheck
-bun run test
-bun run build
-```
+No license file has been added yet, so all rights are reserved by default.
 
-The production build runs type checks before building the API and web workspaces.
+## Author
 
-## Database workflow
-
-The root scripts expose the following Drizzle-based workflow:
-
-```bash
-bun run db:generate
-bun run db:migrate
-bun run db:seed
-```
-
-Review the database configuration and migration files before running these commands against a non-development database.
-
-## Environment configuration
-
-Use the committed example files as a starting point:
-
-- `.env.example`
-- `.env.production.example`
-
-Create local environment files from the examples and supply real credentials through your deployment platform's secret manager. Never commit production secrets, API keys, or database credentials.
-
-## Notes
-
-This repository is marked private in its package manifest. Keep it private unless its code, configuration, dependencies, and operational assumptions have been reviewed for public release.
+Built by [@aghorbani84](https://github.com/aghorbani84).
